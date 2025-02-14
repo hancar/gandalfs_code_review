@@ -68,7 +68,7 @@ def analyze_full_source_code(file_content):
     long_functions = set()
     missing_docstrings = set()
 
-    function_pattern = re.compile(r"^(?P<indent>\s*)def\s+(?P<fname>\w+)\s*\(.*\):")  
+    function_pattern = re.compile(r"^(?P<indent>\s*)(?:async \s*)?def\s+(?P<fname>\w+)\s*\(.*\):")  
     docstring_pattern = re.compile(r'^\s*"""[^"]')
     indent_pattern = re.compile(r'^\s*')
 
@@ -77,15 +77,21 @@ def analyze_full_source_code(file_content):
     stack = []
     is_following_header = False
     for line in lines:
+        if line.strip() == "":
+            continue
         if is_following_header:
             stack[-1].inner_indent = indent_pattern.match(line).group(0)
             if stack and not docstring_pattern.match(line):
                 missing_docstrings.add(stack[-1].name)
             is_following_header = False
-         
         if match := function_pattern.match(line):
+            # if the function is the first or a nested one
+            if not stack or line.startswith(stack[-1].inner_indent):
+                stack.append(FuncMetadata(match.group("fname"), match.group("indent")))
+            # else if it starts on the same level as the previous function
+            elif line.startswith(stack[-1].header_indent):
+                stack[-1] = FuncMetadata(match.group("fname"), match.group("indent"))
             is_following_header = True
-            stack.append(FuncMetadata(match.group("fname"), match.group("indent")))
         elif stack and line.startswith(stack[-1].inner_indent):
             inc_stack(stack, long_functions)
         elif stack:
